@@ -14,13 +14,10 @@ type Memo struct {
 
 func New( expire time.Duration ) *Memo {
 	m := &Memo{expire, map[string]interface{}{}, map[string]time.Time{}, sync.RWMutex{}}
-	ticker := time.NewTicker(1 * time.Minute)
-	done := make(chan bool)
+	ticker := time.NewTicker(500 * time.Second)
 	go func () {
 		for {
 			select {
-			case <-done:
-				return
 			case <-ticker.C:
 				m.purge()
 			}
@@ -29,8 +26,8 @@ func New( expire time.Duration ) *Memo {
 	return m
 }
 
-func Default() *Memo {
-	return New(5 * time.Minute)
+func Default() *Memo {	
+	return New(1 * time.Minute)
 }
 
 func (m *Memo) Get(key string) interface{} {
