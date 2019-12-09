@@ -10,20 +10,20 @@ import (
 
 func TestSetAndGet(t *testing.T) {
 
-	memo := Default()
+	memo := New(30*time.Second, 40 *time.Second)
 	for i := 0 ; i < 1000; i++ {
-		go func (){
-			memo.Set(fmt.Sprintf("key%d", i), i)
-			val := memo.Get(fmt.Sprintf("key%d", i))
+		go func ( v int){
+			memo.Set(fmt.Sprintf("key%d", v), v)
+			val := memo.Get(fmt.Sprintf("key%d", v))
 			fmt.Println(val)	
-		} ()
+		} (i)
 	}
-	time.Sleep(2 * time.Minute)
+	time.Sleep(50 * time.Second)
 	
 	for i := 0 ; i < 1000; i++ {
-		go func (){		
-			val := memo.Get(fmt.Sprintf("key%d", i))
+		go func (v int){		
+			val := memo.Get(fmt.Sprintf("key%d", v))
 			fmt.Println(val)	
-		} ()
+		} (i)
 	}
 }

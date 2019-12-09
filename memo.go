@@ -5,16 +5,22 @@ import (
 	"sync"
 )
 
+type Item struct{
+	val interface{}
+	set time.Time
+	expire time.Time
+}
+
 type Memo struct {
-	expire time.Duration
-	cache map[string]interface{}
-	time map[string] time.Time
+	defaultExpire time.Duration
+	purgeInterval time.Duration
+	cache map[string]Item
 	rw sync.RWMutex
 }
 
-func New( expire time.Duration ) *Memo {
-	m := &Memo{expire, map[string]interface{}{}, map[string]time.Time{}, sync.RWMutex{}}
-	ticker := time.NewTicker(500 * time.Second)
+func New( defaultExpire, purgeInterval time.Duration ) *Memo {
+	m := &Memo{  defaultExpire, purgeInterval,  map[string]Item{}, sync.RWMutex{}}
+	ticker := time.NewTicker(purgeInterval * time.Second)
 	go func () {
 		for {
 			select {
@@ -27,38 +33,47 @@ func New( expire time.Duration ) *Memo {
 }
 
 func Default() *Memo {	
-	return New(1 * time.Minute)
+	return New(1 * time.Minute, 10 * time.Minute)
 }
 
 func (m *Memo) Get(key string) interface{} {
-	
 	m.rw.RLock()
-	val := m.cache[key]
-	last := m.time[key]
+	item := m.cache[key]
 	m.rw.RUnlock()
-	if last.Add(m.expire).Before(time.Now()) {
-		val = nil
+	if item.expire.Before(time.Now()) {
+		return nil
 		m.rw.Lock()
 		delete(m.cache, key)
-		delete(m.time, key)
 		m.rw.Unlock()
 	}
-	return val
+	return item.val
 }
 
-func (m *Memo) Set(key string, val interface{})  {	
-	current := time.Now()	
+func (m *Memo) Set(key string, val interface{}) {
+	m.SetEx(key, m.defaultExpire, val)
+}
+
+func (m *Memo) SetEx(key string, expire time.Duration, val interface{}) {
+
+	current := time.Now()
 	m.rw.Lock()
-	last, ok := m.time[key]
-	if !ok {
-		m.cache[key] = val
-		m.time[key] = current		
-	} else if current.After(last) {
-		m.cache[key] = val
-		m.time[key] = current
+	item, ok := m.cache[key]
+	if !ok || current.After(item.set) {
+		m.cache[key] = Item{
+			val,
+			current,
+			current.Add(expire),
+		}		
 	}
 	m.rw.Unlock()
 }
+
+func (m *Memo) Del(key string) {
+	m.rw.Lock()
+	delete(m.cache, key)
+	m.rw.Unlock()
+}
+
 
 func (m *Memo) purge() {
 	defer func() {
@@ -72,15 +87,21 @@ func (m *Memo) purge() {
 		keys = append(keys, k)
 	}
 	m.rw.RUnlock()
-	for _, k := range keys {
+	length := len(keys)
+	span := 1
+	if length > 1000 {
+		span = 3
+	}
+	
+	for i:=0 ;i< length; i = i+span {
+		key := keys[i]
 		m.rw.RLock()
-		createTime := m.time[k]
+		item, ok := m.cache[key]
 		m.rw.RUnlock()
-		if createTime.Add(m.expire).Before(time.Now()) {
+		if ok && item.expire.Before(time.Now()) {
 			m.rw.Lock()
-			delete(m.cache, k)
-			delete(m.time, k)
-			m.rw.Unlock()			
+			delete(m.cache, key)
+			m.rw.Unlock()		
 		}
 	}
 }
