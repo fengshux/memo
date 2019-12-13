@@ -20,7 +20,7 @@ type Memo struct {
 
 func New( defaultExpire, purgeInterval time.Duration ) *Memo {
 	m := &Memo{  defaultExpire, purgeInterval,  map[string]Item{}, sync.RWMutex{}}
-	ticker := time.NewTicker(purgeInterval * time.Second)
+	ticker := time.NewTicker(purgeInterval)
 	go func () {
 		for {
 			select {
