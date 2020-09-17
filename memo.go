@@ -43,7 +43,9 @@ func (m *Memo) Get(key string) interface{} {
 	if item.expire.Before(time.Now()) {
 		return nil
 		m.rw.Lock()
-		delete(m.cache, key)
+		if m.cache[key].expire.Before(time.Now()) {
+			delete(m.cache, key)
+		}
 		m.rw.Unlock()
 	}
 	return item.val
@@ -100,7 +102,9 @@ func (m *Memo) purge() {
 		m.rw.RUnlock()
 		if ok && item.expire.Before(time.Now()) {
 			m.rw.Lock()
-			delete(m.cache, key)
+			if m.cache[key].expire.Before(time.Now()) {
+				delete(m.cache, key)
+			}
 			m.rw.Unlock()		
 		}
 	}
