@@ -27,3 +27,17 @@ func TestSetAndGet(t *testing.T) {
 		} (i)
 	}
 }
+
+
+func TestGet(t *testing.T) {
+	cache := New(30*time.Second, 40 *time.Second)
+
+	val := cache.Get("key")
+	fmt.Println("val", val)
+}
+
+
+func TestGetSpan(t *testing.T) {
+	
+	
+}
