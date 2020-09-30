@@ -27,3 +27,20 @@ func TestSetAndGet(t *testing.T) {
 		} (i)
 	}
 }
+
+
+func TestGet(t *testing.T) {
+	cache := New(30*time.Second, 40 *time.Second)
+
+	val := cache.Get("key")
+	fmt.Println("val", val)
+}
+
+
+func TestexpireRoundAndShred(t *testing.T) {
+	round, shred := expireRoundAndShred(1000)
+
+	if round != 1 || shred != 1000 {
+		t.Fail("expireRoundAndShred error")
+	}
+}
