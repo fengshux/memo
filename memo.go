@@ -13,6 +13,7 @@ type item struct {
 	expire time.Time
 }
 
+// Memo is the Type of the instance of memory-cache
 type Memo struct {
 	defaultExpire time.Duration
 	purgeInterval time.Duration
@@ -20,6 +21,7 @@ type Memo struct {
 	rw            sync.RWMutex
 }
 
+// New funtion to create the instance
 func New(defaultExpire, purgeInterval time.Duration) *Memo {
 	m := &Memo{defaultExpire, purgeInterval, map[string]item{}, sync.RWMutex{}}
 	ticker := time.NewTicker(purgeInterval)
@@ -34,10 +36,12 @@ func New(defaultExpire, purgeInterval time.Duration) *Memo {
 	return m
 }
 
+// Default function to  new a instance by defaul expire and purge 
 func Default() *Memo {
 	return New(1*time.Minute, 10*time.Minute)
 }
 
+// Get value 
 func (m *Memo) Get(key string) interface{} {
 	m.rw.RLock()
 	// if the key doesn't exist, the itm is zero value
@@ -55,14 +59,17 @@ func (m *Memo) Get(key string) interface{} {
 	return itm.val
 }
 
+// Set a value for a key
 func (m *Memo) Set(key string, val interface{}) {
 	m.SetEx(key, m.defaultExpire, val)
 }
 
+// SetEx set a value for a key with expire 
 func (m *Memo) SetEx(key string, expire time.Duration, val interface{}) {
 
 	current := time.Now()
 	m.rw.Lock()
+	defer m.rw.Unlock()
 	itm, ok := m.cache[key]
 	if !ok || current.After(itm.set) {
 		m.cache[key] = item{
@@ -71,27 +78,45 @@ func (m *Memo) SetEx(key string, expire time.Duration, val interface{}) {
 			current.Add(expire),
 		}
 	}
-	m.rw.Unlock()
 }
 
+// Del delete chache
 func (m *Memo) Del(key string) {
 	m.rw.Lock()
+	defer m.rw.Unlock()
 	delete(m.cache, key)
-	m.rw.Unlock()
 }
 
-func getSpan(length int) int {
-	sp := 1
-	if length <= 1000 {
-		return sp
-	}
 
-	for length > 10 {
-		sp = sp + 1
-		length = length / 10
-	}
-	return sp
+func (m *Memo) length( ) int {
+	m.rw.RLock()
+	defer m.rw.RUnlock()
+	return len(m.cache)
 }
+
+
+
+
+func expireRoundAndShred(length int) (round ,shred int) {
+	// count span 
+	span := 1
+	if length > 1000 {
+		for length > 10 {
+			span = span + 1
+			length = length / 10
+		}
+	}	
+
+	expireCount := length / span
+	shred = expireCount / span
+	round = span
+	if shred > 5000 {
+		shred = 5000
+		round = expireCount / shred
+	}
+	return	
+}
+
 
 func (m *Memo) purge() {
 	defer func() {
@@ -101,28 +126,18 @@ func (m *Memo) purge() {
 		}
 	}()
 
-	m.rw.RLock()
-	length := len(m.cache)
-	m.rw.RUnlock()
+	// get round of expire and count of every round
+	round , shred := expireRoundAndShred(m.length())
+	keys := make([]string, shred)
 
-	span := getSpan(length)
-	expireCount := length / span
-	shard := expireCount / span
-
-	if shard > 5000 {
-		shard = 5000
-		span = expireCount / shard
-	}
-	//	keys := make([]string, shard)
-	keys := make([]string, 0)
 
 	// 当每次执行的过多的时候，分成span个shard来执行
-	for j := 0; j < span; j = j + 1 {
+	for j := 0; j < round; j = j + 1 {
 		// get keys
 		m.rw.RLock()
 		count := 0
-		for k, _ := range m.cache {
-			if count > shard-1 {
+		for k := range m.cache {
+			if count > shred - 1 {
 				break
 			}
 			keys[count] = k
@@ -131,7 +146,7 @@ func (m *Memo) purge() {
 		m.rw.RUnlock()
 
 		// range keys and expire
-		for i := 0; i < shard; i = i + 1 {
+		for i := 0; i < shred; i = i + 1 {
 			key := keys[i]
 			m.rw.RLock()
 			itm, ok := m.cache[key]
