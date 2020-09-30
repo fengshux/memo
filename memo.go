@@ -43,20 +43,35 @@ func Default() *Memo {
 
 // Get value
 func (m *Memo) Get(key string) interface{} {
-	m.rw.RLock()
-	// if the key doesn't exist, the itm is zero value
-	itm := m.cache[key]
-	m.rw.RUnlock()
 
-	if itm.expire.Before(time.Now()) {
-		m.rw.Lock()
-		if m.cache[key].expire.Before(time.Now()) {
-			delete(m.cache, key)
-		}
-		m.rw.Unlock()
+	itm := m.getNotExpire(key)
+	if itm == nil {
+		return nil
+	}
+	
+	if itm != nil && itm.expire.Before(time.Now()) {
+		m.expireKey(key)
 		return nil
 	}
 	return itm.val
+}
+
+func (m *Memo) getNotExpire(key string) *item {
+	m.rw.RLock()
+	defer m.rw.RUnlock()
+	itm, ok := m.cache[key]
+	if !ok {
+		return nil
+	}
+	return &itm
+}
+
+func (m *Memo) expireKey( key string) {
+	m.rw.Lock()
+	defer m.rw.Unlock()
+	if m.cache[key].expire.Before(time.Now()) {
+		delete(m.cache, key)
+	}
 }
 
 // Set a value for a key
@@ -93,6 +108,21 @@ func (m *Memo) length() int {
 	return len(m.cache)
 }
 
+
+func (m *Memo) expirekeys(keys []string, num int) []string {
+	m.rw.RLock()
+	defer m.rw.RUnlock()
+	count := 0
+	for k := range m.cache {
+		if count > num - 1 {
+			break
+		}
+		keys = append(keys, k)
+		count = count + 1
+	}
+	return keys
+}
+
 func expireRoundAndShred(length int) (round, shred int) {
 	// count span
 	span := 1
@@ -112,6 +142,8 @@ func expireRoundAndShred(length int) (round, shred int) {
 	return
 }
 
+
+
 func (m *Memo) purge() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -121,37 +153,19 @@ func (m *Memo) purge() {
 	}()
 	fmt.Println("purge start")
 	// get round of expire and count of every round
-	length := m.length()
+	length := m.length()	
 	round, shred := expireRoundAndShred(length)
-	keys := make([]string, shred)
 	fmt.Println("length,round, shred", length, round, shred)
-	// 当每次执行的过多的时候，分成span个shard来执行
+	keys := make([]string, 0, shred)
+	
 	for j := 0; j < round; j = j + 1 {
+		keys = keys[0:0]
 		// get keys
-		m.rw.RLock()
-		count := 0
-		for k := range m.cache {
-			if count > shred-1 {
-				break
-			}
-			keys[count] = k
-			count = count + 1
-		}
-		m.rw.RUnlock()
+		keys = m.expirekeys(keys, shred)
 
 		// range keys and expire
-		for i := 0; i < shred; i = i + 1 {
-			key := keys[i]
-			m.rw.RLock()
-			itm, ok := m.cache[key]
-			m.rw.RUnlock()
-			if ok && itm.expire.Before(time.Now()) {
-				m.rw.Lock()
-				if m.cache[key].expire.Before(time.Now()) {
-					delete(m.cache, key)
-				}
-				m.rw.Unlock()
-			}
+		for _, key := range keys {
+			m.Get(key)
 		}
 
 	}
