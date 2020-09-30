@@ -37,7 +37,10 @@ func TestGet(t *testing.T) {
 }
 
 
-func TestGetSpan(t *testing.T) {
-	
-	
+func TestexpireRoundAndShred(t *testing.T) {
+	round, shred := expireRoundAndShred(1000)
+
+	if round != 1 || shred != 1000 {
+		t.Fail("expireRoundAndShred error")
+	}
 }

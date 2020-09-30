@@ -36,12 +36,12 @@ func New(defaultExpire, purgeInterval time.Duration) *Memo {
 	return m
 }
 
-// Default function to  new a instance by defaul expire and purge 
+// Default function to  new a instance by defaul expire and purge
 func Default() *Memo {
 	return New(1*time.Minute, 10*time.Minute)
 }
 
-// Get value 
+// Get value
 func (m *Memo) Get(key string) interface{} {
 	m.rw.RLock()
 	// if the key doesn't exist, the itm is zero value
@@ -64,7 +64,7 @@ func (m *Memo) Set(key string, val interface{}) {
 	m.SetEx(key, m.defaultExpire, val)
 }
 
-// SetEx set a value for a key with expire 
+// SetEx set a value for a key with expire
 func (m *Memo) SetEx(key string, expire time.Duration, val interface{}) {
 
 	current := time.Now()
@@ -87,36 +87,30 @@ func (m *Memo) Del(key string) {
 	delete(m.cache, key)
 }
 
-
-func (m *Memo) length( ) int {
+func (m *Memo) length() int {
 	m.rw.RLock()
 	defer m.rw.RUnlock()
 	return len(m.cache)
 }
 
-
-
-
-func expireRoundAndShred(length int) (round ,shred int) {
-	// count span 
+func expireRoundAndShred(length int) (round, shred int) {
+	// count span
 	span := 1
-	if length > 1000 {
-		for length > 10 {
+	if length > 10000 {
+		for j := length; j > 10; j = j / 10 {
 			span = span + 1
-			length = length / 10
 		}
-	}	
+	}
 
 	expireCount := length / span
-	shred = expireCount / span
-	round = span
+	round = span + 1;
+	shred = expireCount / round
 	if shred > 5000 {
 		shred = 5000
 		round = expireCount / shred
 	}
-	return	
+	return
 }
-
 
 func (m *Memo) purge() {
 	defer func() {
@@ -125,19 +119,19 @@ func (m *Memo) purge() {
 			debug.PrintStack()
 		}
 	}()
-
+	fmt.Println("purge start")
 	// get round of expire and count of every round
-	round , shred := expireRoundAndShred(m.length())
+	length := m.length()
+	round, shred := expireRoundAndShred(length)
 	keys := make([]string, shred)
-
-
+	fmt.Println("length,round, shred", length, round, shred)
 	// 当每次执行的过多的时候，分成span个shard来执行
 	for j := 0; j < round; j = j + 1 {
 		// get keys
 		m.rw.RLock()
 		count := 0
 		for k := range m.cache {
-			if count > shred - 1 {
+			if count > shred-1 {
 				break
 			}
 			keys[count] = k
@@ -161,5 +155,5 @@ func (m *Memo) purge() {
 		}
 
 	}
-
+	fmt.Println("purge stop")
 }
